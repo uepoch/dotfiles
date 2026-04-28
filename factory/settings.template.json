@@ -1,0 +1,11 @@
+{
+  "enabledPlugins": {
+    "core@factory-plugins": true,
+    "debugging@factory-plugins": true
+  },
+  "logoAnimation": "off",
+  "customModels": [],
+  "enableDroidShield": false,
+  "terminalColorMode": "light",
+  "compactionModelMode": "current-model"
+}

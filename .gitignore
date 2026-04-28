@@ -1,0 +1,28 @@
+# Local secrets and machine-specific overrides
+*.local
+*.local.*
+.env
+.env.*
+!.env.example
+
+# Never commit Factory or proxy auth/state
+factory/settings.local.json
+factory/settings.json
+factory/auth*
+factory/auth.v2*
+factory/.factory/
+factory/cli-proxy-api/*.json
+!factory/cli-proxy-api/config.example.yaml
+
+# Generated machine state
+stow/config/.config/team-zsh/90-local.zsh
+
+__pycache__/
+*.pyc
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
