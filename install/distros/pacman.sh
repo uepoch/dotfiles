@@ -11,7 +11,7 @@ install_arch_core() {
 install_arch_dev() {
   sudo pacman -S --needed --noconfirm \
     go rustup bun asdf-vm nodejs npm jq just make cmake ninja \
-    lazygit htop btop uv
+    lazygit htop btop uv jujutsu
 }
 
 install_arch_ops() {

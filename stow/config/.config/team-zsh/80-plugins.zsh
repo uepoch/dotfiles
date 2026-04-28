@@ -16,3 +16,8 @@ unset _zsh_autosug
 _zsh_syntax=/usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 [[ -f "$_zsh_syntax" ]] && source "$_zsh_syntax"
 unset _zsh_syntax
+
+# jujutsu (jj) completions
+if (( $+commands[jj] )); then
+  source <(COMPLETE=zsh jj)
+fi

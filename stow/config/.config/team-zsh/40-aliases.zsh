@@ -47,3 +47,10 @@ fi
 if (( $+commands[docker] )); then
   alias d='docker'
 fi
+
+# --- jujutsu (jj) ---
+if (( $+commands[jj] )); then
+  alias jl='jj log'
+  alias js='jj status'
+  alias jd='jj diff'
+fi

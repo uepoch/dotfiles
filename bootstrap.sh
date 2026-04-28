@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # bootstrap.sh - main entry point for setting up team-dotfiles.
-# Usage: ./bootstrap.sh [profile ...]
-#   Profiles: core (default), dev, ops, factory, all
+# Usage: ./bootstrap.sh [--name NAME] [--email EMAIL] [profile ...]
+#   Profiles: core (default), dev, ops, factory, jj, all
 #   Example:  ./bootstrap.sh core dev
-#             ./bootstrap.sh all
+#             ./bootstrap.sh --name "Alice" --email "a@b.com" all
+#   Env vars: DOTFILES_USER_NAME, DOTFILES_USER_EMAIL override flags.
 
 set -euo pipefail
 
@@ -17,16 +18,25 @@ source "$SCRIPT_DIR/install/lib/link.sh"
 
 # --- Parse arguments ---
 PROFILES=()
-if [[ $# -eq 0 ]]; then
+_BOOTSTRAP_NAME=""
+_BOOTSTRAP_EMAIL=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --name)   _BOOTSTRAP_NAME="$2"; shift 2 ;;
+    --email)  _BOOTSTRAP_EMAIL="$2"; shift 2 ;;
+    all)      PROFILES+=(core dev ops factory jj); shift ;;
+    *)        PROFILES+=("$1"); shift ;;
+  esac
+done
+
+if [[ ${#PROFILES[@]} -eq 0 ]]; then
   PROFILES=(core)
-else
-  for arg in "$@"; do
-    case "$arg" in
-      all)   PROFILES+=(core dev ops factory) ;;
-      *)     PROFILES+=("$arg") ;;
-    esac
-  done
 fi
+
+# Export so child scripts can read them
+export DOTFILES_USER_NAME="${DOTFILES_USER_NAME:-$_BOOTSTRAP_NAME}"
+export DOTFILES_USER_EMAIL="${DOTFILES_USER_EMAIL:-$_BOOTSTRAP_EMAIL}"
 
 DISTRO=$(detect_distro)
 echo "========================================"

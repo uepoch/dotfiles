@@ -20,7 +20,7 @@ install_apt_core() {
 install_apt_dev() {
   sudo apt-get install -y \
     golang-go rustup nodejs npm jq just make cmake ninja-build \
-    lazygit htop btop uv
+    lazygit htop btop uv jujutsu
   # bun is not in apt; install via curl
   if ! command -v bun &>/dev/null; then
     curl -fsSL https://bun.sh/install | bash

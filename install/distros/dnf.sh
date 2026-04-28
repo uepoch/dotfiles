@@ -15,7 +15,7 @@ install_dnf_core() {
 install_dnf_dev() {
   sudo dnf install -y \
     golang rustup nodejs npm jq just make cmake ninja-build \
-    lazygit htop btop uv
+    lazygit htop btop uv jujutsu
   if ! command -v bun &>/dev/null; then
     curl -fsSL https://bun.sh/install | bash
   fi
