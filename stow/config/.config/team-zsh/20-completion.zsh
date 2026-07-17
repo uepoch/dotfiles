@@ -9,4 +9,12 @@ unset _zcompdump
 
 zstyle ':completion:*' menu select
 zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
-zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*' list-colors "${(s.:.)${LS_COLORS:-}}"
+
+if (( $+commands[jj] )); then
+  if jj util completion zsh >/dev/null 2>&1; then
+    source <(jj util completion zsh)
+  else
+    source <(COMPLETE=zsh jj)
+  fi
+fi

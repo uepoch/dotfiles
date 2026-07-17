@@ -28,6 +28,7 @@ CORE_PACKAGES=(
   git
   curl
   wget
+  stow
 )
 
 echo "=== Installing core profile on $distro ==="
@@ -50,18 +51,12 @@ case "$distro" in
     ;;
 esac
 
-# Install zsh plugins if not already available
+# Report unexpected plugin layouts after package installation.
 if [[ ! -f /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
-  echo "zsh-autosuggestions not found at expected path; you may need to install it manually."
+  echo "WARNING: zsh-autosuggestions was installed but not found at the expected path."
 fi
 if [[ ! -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
-  echo "zsh-syntax-highlighting not found at expected path; you may need to install it manually."
-fi
-
-# Install GNU Stow if missing
-if ! command -v stow &>/dev/null; then
-  echo "Installing GNU Stow ..."
-  install_packages "$distro" stow
+  echo "WARNING: zsh-syntax-highlighting was installed but not found at the expected path."
 fi
 
 echo "=== Core profile done ==="

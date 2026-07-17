@@ -25,21 +25,24 @@ case "$distro" in
     source "$REPO_ROOT/install/distros/dnf.sh"
     install_dnf_dev
     ;;
+  *)
+    echo "ERROR: development profile is unsupported on '$distro'." >&2
+    exit 1
+    ;;
 esac
 
 # Initialize rustup if just installed
-if command -v rustup &>/dev/null && [[ ! -d "$HOME/.rustup" ]]; then
+if command -v rustup >/dev/null 2>&1 && [[ ! -d "$HOME/.rustup" ]]; then
   echo "Initializing rustup stable toolchain ..."
   rustup default stable
 fi
 
 # Initialize asdf nodejs plugin if asdf is available
-if command -v asdf &>/dev/null; then
+if command -v asdf >/dev/null 2>&1; then
   asdf plugin add nodejs 2>/dev/null || true
-  # Install version from .tool-versions if present
+  # Read versions from the Stow source; bootstrap links this file into HOME later.
   if [[ -f "$REPO_ROOT/stow/config/.tool-versions" ]]; then
-    cp "$REPO_ROOT/stow/config/.tool-versions" "$HOME/.tool-versions" 2>/dev/null || true
-    asdf install 2>/dev/null || true
+    (cd "$REPO_ROOT/stow/config" && asdf install) 2>/dev/null || true
   fi
 fi
 

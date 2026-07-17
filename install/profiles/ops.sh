@@ -25,6 +25,10 @@ case "$distro" in
     source "$REPO_ROOT/install/distros/dnf.sh"
     install_dnf_ops
     ;;
+  *)
+    echo "ERROR: ops profile is unsupported on '$distro'." >&2
+    exit 1
+    ;;
 esac
 
 echo "=== Ops profile done ==="

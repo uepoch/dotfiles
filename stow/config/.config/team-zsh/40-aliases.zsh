@@ -2,32 +2,24 @@
 # Only enabled when the underlying tool is actually installed.
 
 # --- eza (ls replacement) ---
-if (( $+commands[eza] )); then
-  alias ls='eza --icons --group-directories-first'
-  alias ll='eza -lah --icons --group-directories-first'
-  alias la='eza -la --icons --group-directories-first'
-  alias tree='eza --tree --icons'
-fi
+alias_cmd eza \
+  'ls=eza --icons --group-directories-first' \
+  'll=eza -lah --icons --group-directories-first' \
+  'la=eza -la --icons --group-directories-first' \
+  'tree=eza --tree --icons'
 
 # --- bat (cat replacement) ---
-if (( $+commands[bat] )); then
-  alias cat='bat'
-fi
+alias_cmd bat 'cat=bat'
 
 # --- ripgrep / fd ---
-if (( $+commands[rg] )); then
-  alias grep='rg'
-fi
-if (( $+commands[fd] )); then
-  alias find='fd'
-fi
+alias_cmd rg 'grep=rg'
+alias_cmd fd 'find=fd'
 
 # --- editor shortcuts ---
-if (( $+commands[nvim] )); then
-  alias v='nvim'
-  alias vf='nvim $(fzf)'
-  alias vz='nvim ~/.zshrc && source ~/.zshrc'
-fi
+alias_cmd nvim \
+  'v=nvim' \
+  'vim=nvim' \
+  'vz=nvim ~/.zshrc.local'
 alias c='clear'
 alias ..='cd ..'
 alias ...='cd ../..'
@@ -40,17 +32,31 @@ alias gp='git push'
 alias gl='git log --oneline --graph --decorate --all'
 
 # --- containers (podman preferred, docker optional) ---
-if (( $+commands[podman] )); then
-  alias p='podman'
-  alias pc='podman compose'
-fi
-if (( $+commands[docker] )); then
-  alias d='docker'
-fi
+alias_cmd podman \
+  'p=podman' \
+  'pc=podman compose'
+alias_cmd docker 'd=docker'
 
 # --- jujutsu (jj) ---
-if (( $+commands[jj] )); then
-  alias jl='jj log'
-  alias js='jj status'
-  alias jd='jj diff'
-fi
+alias_cmd jj \
+  'jl=jj log' \
+  'js=jj status' \
+  'jd=jj diff'
+
+# --- zellij ---
+alias_cmd zellij \
+  'zl=zellij list-sessions' \
+  'za=zellij attach'
+
+# --- Arch Linux packages ---
+alias_cmd pacman \
+  'pacup=sudo pacman -Syu' \
+  'pacin=sudo pacman -S' \
+  'pacs=pacman -Ss' \
+  'pacq=pacman -Qs' \
+  'pacrm=sudo pacman -Rns'
+
+# --- agent CLIs ---
+alias_cmd opencode 'oc=opencode -c'
+alias_cmd droid 'dc=droid --resume'
+alias_cmd try-rs 'try=try-rs'
