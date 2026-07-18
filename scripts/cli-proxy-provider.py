@@ -119,6 +119,9 @@ def _ensure_model_mapping(block: list[str]) -> list[str]:
     if candidate is not None:
         item_start, item_end = candidate
         name_pattern = re.compile(r"^(\s+-\s+name\s*:)\s*.*?(\s+#.*)?(?:\r?\n)?$")
+        head_alias_pattern = re.compile(
+            r"^(?P<indent>\s+)-\s+alias\s*:\s*.*?(?P<comment>\s+#.*)?(?:\r?\n)?$"
+        )
         alias_pattern = re.compile(r"^(\s+alias\s*:)\s*.*?(\s+#.*)?(?:\r?\n)?$")
         found_name = found_alias = False
         for index in range(item_start, item_end):
@@ -126,6 +129,17 @@ def _ensure_model_mapping(block: list[str]) -> list[str]:
             if match:
                 block[index] = f"{match.group(1)} {yaml_quote(ZAI_MODEL)}{match.group(2) or ''}{newline}"
                 found_name = True
+            match = head_alias_pattern.match(block[index])
+            if match:
+                indent = match.group("indent")
+                block[index] = (
+                    f"{indent}- name: {yaml_quote(ZAI_MODEL)}"
+                    f"{match.group('comment') or ''}{newline}"
+                )
+                block.insert(index + 1, f"{indent}  alias: {yaml_quote(ZAI_MODEL)}{newline}")
+                item_end += 1
+                found_name = found_alias = True
+                break
             match = alias_pattern.match(block[index])
             if match:
                 block[index] = f"{match.group(1)} {yaml_quote(ZAI_MODEL)}{match.group(2) or ''}{newline}"

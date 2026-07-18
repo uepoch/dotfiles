@@ -24,6 +24,10 @@ if [[ -f "$_team_proxy_env" && -r "$_team_proxy_env" ]]; then
 fi
 unset _team_proxy_env
 
+# Remove aliases from the previous monolithic config before parsing modules
+# that define functions with the same names.
+unalias vf claudex claudez 2>/dev/null || true
+
 if [[ -d "$TEAM_ZSH_DIR" ]]; then
   for _team_zsh_file in "$TEAM_ZSH_DIR"/*.zsh(N); do
     [[ "${_team_zsh_file:t}" == 90-local.zsh ||
@@ -36,6 +40,7 @@ fi
 [[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
 
 # Retire legacy aliases when the shared composable wrappers are available.
+(( $+functions[vf] )) && unalias vf 2>/dev/null
 (( $+functions[claudex] )) && unalias claudex 2>/dev/null
 (( $+functions[claudez] )) && unalias claudez 2>/dev/null
 

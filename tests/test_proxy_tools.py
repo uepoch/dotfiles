@@ -204,6 +204,112 @@ class CommonHelperTests(unittest.TestCase):
                     )
             self.assertEqual(path.read_text(encoding="utf-8"), "external\n")
 
+    def test_backup_retention_keeps_newest_three_private_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "proxy.env"
+            path.write_text("fixture-secret-version-0\n", encoding="utf-8")
+            output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(output):
+                for version in range(1, 6):
+                    common.write_if_changed(
+                        path,
+                        f"fixture-secret-version-{version}\n",
+                    )
+            backups = sorted(path.parent.glob("proxy.env.bak.*"))
+            self.assertEqual(len(backups), common.BACKUP_RETENTION_COUNT)
+            self.assertEqual(
+                [backup.read_text(encoding="utf-8") for backup in backups],
+                [
+                    "fixture-secret-version-2\n",
+                    "fixture-secret-version-3\n",
+                    "fixture-secret-version-4\n",
+                ],
+            )
+            self.assertTrue(all(mode(backup) == 0o600 for backup in backups))
+            self.assertNotIn("fixture-secret", output.getvalue())
+
+    def test_failed_destination_write_does_not_prune_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.yaml"
+            path.write_text("old\n", encoding="utf-8")
+            existing = set()
+            for index in range(4):
+                backup = path.with_name(
+                    f"config.yaml.bak.20000101T00000{index}.000000Z"
+                )
+                backup.write_text(f"backup-{index}\n", encoding="utf-8")
+                existing.add(backup)
+
+            with mock.patch.object(
+                common,
+                "atomic_write",
+                side_effect=common.ProxyToolError("simulated destination failure"),
+            ):
+                with self.assertRaisesRegex(
+                    common.ProxyToolError, "simulated destination failure"
+                ):
+                    common.write_if_changed(path, "new\n")
+
+            self.assertTrue(all(backup.exists() for backup in existing))
+            self.assertGreaterEqual(
+                len(list(path.parent.glob("config.yaml.bak.*"))),
+                len(existing),
+            )
+
+    def test_failed_backup_pruning_warns_after_successful_write(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "proxy.env"
+            path.write_text("old-fixture-secret\n", encoding="utf-8")
+            output = io.StringIO()
+
+            with mock.patch.object(
+                common,
+                "prune_generated_backups",
+                side_effect=common.ProxyToolError("fixture-secret cleanup failure"),
+            ), redirect_stderr(output):
+                changed = common.write_if_changed(path, "new-fixture-secret\n")
+
+            self.assertTrue(changed)
+            self.assertEqual(path.read_text(encoding="utf-8"), "new-fixture-secret\n")
+            self.assertIn("WARNING:", output.getvalue())
+            self.assertNotIn("fixture-secret", output.getvalue())
+
+    def test_backup_pruning_ignores_symlinks_directories_and_similar_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "config.yaml"
+            path.write_text("old\n", encoding="utf-8")
+            symlink_target = root / "symlink-target"
+            symlink_target.write_text("keep\n", encoding="utf-8")
+            symlink = root / "config.yaml.bak.20000101T000001.000000Z"
+            symlink.symlink_to(symlink_target)
+            directory = root / "config.yaml.bak.20000101T000002.000000Z"
+            directory.mkdir()
+            similarly_prefixed = root / "config.yaml-extra.bak.20000101T000003.000000Z"
+            similarly_prefixed.write_text("keep\n", encoding="utf-8")
+            suffixed = root / "config.yaml.bak.20000101T000004.000000Z.extra"
+            suffixed.write_text("keep\n", encoding="utf-8")
+            for index in range(3, 7):
+                generated = root / f"config.yaml.bak.20000101T00000{index}.000000Z"
+                generated.write_text(f"generated-{index}\n", encoding="utf-8")
+
+            common.write_if_changed(path, "new\n")
+
+            self.assertTrue(symlink.is_symlink())
+            self.assertTrue(directory.is_dir())
+            self.assertEqual(symlink_target.read_text(encoding="utf-8"), "keep\n")
+            self.assertTrue(similarly_prefixed.is_file())
+            self.assertTrue(suffixed.is_file())
+            regular_exact = [
+                candidate
+                for candidate in root.glob("config.yaml.bak.*")
+                if candidate.is_file() and not candidate.is_symlink()
+                and common._BACKUP_TIMESTAMP_PATTERN.fullmatch(
+                    candidate.name.removeprefix("config.yaml.bak.")
+                )
+            ]
+            self.assertEqual(len(regular_exact), common.BACKUP_RETENTION_COUNT)
+
     def test_env_update_removes_stale_duplicate_assignments(self) -> None:
         updated = common.update_env_text(
             "export KEEP=1\nexport CLI_PROXY_API_KEY=old\n"
@@ -289,6 +395,45 @@ unknown-after:
         self.assertEqual(owned["base-url"], provider.ZAI_BASE_URL)
         self.assertIn({"name": "glm-5.2", "alias": "glm-5.2"}, owned["models"])
         self.assertIs(parsed["unknown-after"]["keep"], True)
+
+    def test_alias_only_model_mapping_remains_one_preserved_item(self) -> None:
+        source = """claude-api-key:
+  - api-key: "old-owned-secret"
+    # team-dotfiles-managed: zai
+    base-url: "https://old.invalid"
+    models:
+      - alias: "glm-5.2" # keep model comment
+        unknown-setting: true # keep unknown comment
+"""
+        updated = provider.upsert_zai_text(source, "new-secret")
+        parsed_models = yaml.safe_load(updated)["claude-api-key"][0]["models"]
+        self.assertEqual(len(parsed_models), 1)
+        self.assertEqual(parsed_models[0]["name"], provider.ZAI_MODEL)
+        self.assertEqual(parsed_models[0]["alias"], provider.ZAI_MODEL)
+        self.assertTrue(parsed_models[0]["unknown-setting"])
+        self.assertIn("# keep model comment", updated)
+        self.assertIn("# keep unknown comment", updated)
+        self.assertEqual(updated.count("      - "), 1)
+        self.assertEqual(provider.upsert_zai_text(updated, "new-secret"), updated)
+
+    def test_name_only_model_mapping_gains_child_alias(self) -> None:
+        source = """claude-api-key:
+  - api-key: "old-owned-secret"
+    # team-dotfiles-managed: zai
+    base-url: "https://old.invalid"
+    models:
+      - name: "glm-5.2" # preserve name comment
+        extra-field: "kept"
+"""
+        updated = provider.upsert_zai_text(source, "new-secret")
+        parsed_models = yaml.safe_load(updated)["claude-api-key"][0]["models"]
+        self.assertEqual(
+            parsed_models,
+            [{"name": provider.ZAI_MODEL, "extra-field": "kept", "alias": provider.ZAI_MODEL}],
+        )
+        self.assertIn("# preserve name comment", updated)
+        self.assertEqual(updated.count("      - "), 1)
+        self.assertEqual(provider.upsert_zai_text(updated, "new-secret"), updated)
 
     def test_configure_zai_creates_backup_and_private_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

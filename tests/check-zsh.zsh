@@ -130,6 +130,23 @@ unsafe_warning=$(
 [[ "$unsafe_warning" == *'skipping unsafe proxy environment file'* ]] ||
   fail "unsafe proxy environment did not emit a warning"
 
+# Reloading over aliases from the previous ad-hoc config must replace them
+# before Zsh parses shared function definitions.
+legacy_reload_output=$(
+  HOME="$HOME" \
+  XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+  TEAM_ZSH_DIR="$TEAM_ZSH_DIR" \
+  TERM="$TERM" \
+  zsh -f -c '
+    alias vf="nvim"
+    alias claudex="claude"
+    alias claudez="claude"
+    source "$1"
+    (( $+functions[vf] && $+functions[claudex] && $+functions[claudez] ))
+    (( ! $+aliases[vf] && ! $+aliases[claudex] && ! $+aliases[claudez] ))
+  ' _ "$repo_root/stow/zsh/.zshrc" 2>&1
+) || fail "reloading over legacy function aliases failed: $legacy_reload_output"
+
 # Fake proxy and Claude commands record only non-secret behavior. curl consumes
 # its header configuration from stdin so credentials never appear in argv logs.
 cat > "$fake_bin/curl" <<'CURL'
@@ -198,7 +215,7 @@ export ENABLE_TOOL_SEARCH=true
 export HTTP_PROXY='http://untrusted-proxy.test:8080'
 export http_proxy="$HTTP_PROXY"
 claudex --print 'hello world' || fail "claudex default model invocation failed"
-assert_file_contains "$FAKE_CLAUDE_LOG" 'base=http://proxy.test:8317/v1'
+assert_file_contains "$FAKE_CLAUDE_LOG" 'base=http://proxy.test:8317'
 assert_file_contains "$FAKE_CLAUDE_LOG" 'token_set=yes'
 assert_file_contains "$FAKE_CLAUDE_LOG" 'model=gpt-5.6-sol'
 assert_file_contains "$FAKE_CLAUDE_LOG" 'subagent=gpt-5.6-sol'
@@ -280,5 +297,58 @@ TEAM_DOTFILES_ROOT="$provider_root" \
   fail "cli_proxy_configure_provider failed"
 assert_file_contains "$FAKE_PYTHON_LOG" \
   "$provider_root/scripts/cli-proxy-provider.py|zai|--dry-run"
+
+# The try-rs wrapper evaluates only successful shell output and preserves exact
+# statuses for command-substitution failures and option passthroughs.
+cat > "$fake_bin/try-rs" <<'TRY_RS'
+#!/usr/bin/env zsh
+print -r -- "${(j:|:)@}" >> "$FAKE_TRY_RS_LOG"
+case "${1:-}" in
+  success)
+    print -r -- 'export TRY_RS_EVAL_RESULT=success'
+    exit 0
+    ;;
+  fail-empty)
+    exit 42
+    ;;
+  fail-output)
+    print -r -- 'export TRY_RS_EVAL_RESULT=incorrect'
+    exit 43
+    ;;
+  --fail-option)
+    exit 31
+    ;;
+esac
+TRY_RS
+chmod +x "$fake_bin/try-rs"
+export FAKE_TRY_RS_LOG="$test_home/try-rs.log"
+: > "$FAKE_TRY_RS_LOG"
+rehash
+source "$repo_root/stow/config/.config/try-rs/try-rs.zsh"
+
+unset TRY_RS_EVAL_RESULT
+try-rs success || fail "successful try-rs invocation failed"
+[[ "${TRY_RS_EVAL_RESULT:-}" == success ]] ||
+  fail "successful try-rs output was not evaluated"
+
+try-rs fail-empty >/dev/null 2>&1
+[[ $? -eq 42 ]] || fail "empty-output try-rs failure did not preserve status 42"
+[[ "${TRY_RS_EVAL_RESULT:-}" == success ]] ||
+  fail "empty-output try-rs failure changed shell state"
+
+try-rs fail-output >/dev/null 2>&1
+[[ $? -eq 43 ]] || fail "nonempty-output try-rs failure did not preserve status 43"
+[[ "${TRY_RS_EVAL_RESULT:-}" == success ]] ||
+  fail "failed try-rs output was evaluated"
+
+try-rs --fail-option passthrough >/dev/null 2>&1
+[[ $? -eq 31 ]] || fail "try-rs option passthrough did not preserve status 31"
+assert_file_contains "$FAKE_TRY_RS_LOG" '--fail-option|passthrough'
+
+unset TRY_PATH
+tries_path=$(_try_rs_get_tries_path) ||
+  fail "_try_rs_get_tries_path failed with NO_UNSET and no TRY_PATH"
+[[ "$tries_path" == "$HOME/work/tries" ]] ||
+  fail "_try_rs_get_tries_path returned an unexpected default"
 
 print "check-zsh.zsh: PASS"

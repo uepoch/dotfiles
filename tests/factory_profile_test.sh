@@ -58,10 +58,17 @@ make_fake "$fake_bin/python3" '
 name=${1##*/}
 shift
 printf "python:%s %s\\n" "$name" "$*" >> "$COMMAND_LOG"
+if [[ "$name" == - ]]; then
+  exec /usr/bin/python3 - "$@"
+fi
 case "$name" in
   cli-proxy-init.py)
     mkdir -p "$(dirname "$PROXY_CONFIG_PATH")"
-    printf "port: 8317\\n" > "$PROXY_CONFIG_PATH"
+    if [[ -n "${CONFIG_CONTENT+x}" ]]; then
+      printf "%s\\n" "$CONFIG_CONTENT" > "$PROXY_CONFIG_PATH"
+    else
+      printf "port: %s\\n" "${CONFIG_PORT:-8317}" > "$PROXY_CONFIG_PATH"
+    fi
     ;;
   factory-sync-cli-proxy.py)
     [[ "${FAIL_SYNC:-0}" != 1 ]] || exit 23
@@ -108,6 +115,8 @@ grep -q 'systemctl:--user restart cli-proxy-api.service' "$COMMAND_LOG" || \
   fail "Factory profile did not restart the user service"
 grep -q 'curl:--noproxy \* --fail --silent --show-error' "$COMMAND_LOG" || \
   fail "Factory profile did not wait for local proxy health"
+grep -Fq 'http://127.0.0.1:8317/healthz' "$COMMAND_LOG" || \
+  fail "Factory profile did not use the default configured health port"
 grep -q 'systemctl:--user is-active --quiet cli-proxy-api.service' "$COMMAND_LOG" || \
   fail "Factory profile did not verify the user service"
 grep -q "^python:cli-proxy-provider.py zai --config $PROXY_CONFIG_PATH --if-available$" \
@@ -142,6 +151,47 @@ env "${profile_env[@]}" CLI_PROXY_CONFIG="$custom_config" \
   bash "$REPO_ROOT/install/profiles/factory.sh" </dev/null > /dev/null
 grep -Fq "ExecStart=/usr/bin/cli-proxy-api --config \"$custom_config\"" \
   "$override_file" || fail "Custom proxy config was not propagated to systemd"
+
+# Readiness follows a validated non-default port from the initialized config.
+: > "$COMMAND_LOG"
+env "${profile_env[@]}" CONFIG_PORT=18442 \
+  bash "$REPO_ROOT/install/profiles/factory.sh" </dev/null > /dev/null
+grep -Fq 'http://127.0.0.1:18442/healthz' "$COMMAND_LOG" || \
+  fail "Factory profile ignored the non-default configured health port"
+if grep -Fq 'http://127.0.0.1:8317/healthz' "$COMMAND_LOG"; then
+  fail "Factory profile retained the hardcoded default health port"
+fi
+
+# A missing port uses cli-proxy-init.py's effective default.
+: > "$COMMAND_LOG"
+env "${profile_env[@]}" CONFIG_CONTENT='host: 127.0.0.1' \
+  bash "$REPO_ROOT/install/profiles/factory.sh" </dev/null > /dev/null
+grep -Fq 'http://127.0.0.1:8317/healthz' "$COMMAND_LOG" || \
+  fail "Factory profile did not use the default health port when port was omitted"
+
+# Non-loopback proxy hosts fail before service startup or model sync.
+: > "$COMMAND_LOG"
+if env "${profile_env[@]}" CONFIG_CONTENT=$'host: 0.0.0.0\nport: 8317' \
+  bash "$REPO_ROOT/install/profiles/factory.sh" </dev/null > /dev/null 2>&1; then
+  fail "Factory profile accepted a non-loopback proxy host"
+fi
+if grep -Eq 'systemctl:--user (daemon-reload|enable|restart)|python:factory-sync-cli-proxy.py|curl:--noproxy' \
+  "$COMMAND_LOG"; then
+  fail "Factory profile continued after a non-loopback proxy host"
+fi
+
+# Invalid ports and malformed YAML fail before service startup or model sync.
+for invalid_config in 'port: 0' 'port: 65536' 'port: not-a-number' 'port: ['; do
+  : > "$COMMAND_LOG"
+  if env "${profile_env[@]}" CONFIG_CONTENT="$invalid_config" \
+    bash "$REPO_ROOT/install/profiles/factory.sh" </dev/null > /dev/null 2>&1; then
+    fail "Factory profile accepted invalid proxy config: $invalid_config"
+  fi
+  if grep -Eq 'systemctl:--user (daemon-reload|enable|restart)|python:factory-sync-cli-proxy.py|curl:--noproxy' \
+    "$COMMAND_LOG"; then
+    fail "Factory profile continued after invalid proxy port: $invalid_config"
+  fi
+done
 
 # When a pseudo-terminal is available, the profile invokes the sync tool's gum wizard mode.
 if command -v script >/dev/null 2>&1; then

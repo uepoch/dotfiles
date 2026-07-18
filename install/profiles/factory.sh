@@ -93,8 +93,36 @@ sync_factory_models() {
   fi
 }
 
+resolve_cli_proxy_health_url() {
+  python3 - "$PROXY_CONFIG" <<'PYTHON'
+from pathlib import Path
+import sys
+
+try:
+    import yaml
+
+    config = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    if not isinstance(config, dict):
+        raise ValueError
+    host = config.get("host", "127.0.0.1")
+    if host != "127.0.0.1":
+        raise ValueError
+    port = config.get("port", 8317)
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError
+except (OSError, UnicodeError, ValueError, yaml.YAMLError):
+    print(
+        "ERROR: proxy config must use host 127.0.0.1 and an integer port from 1 through 65535.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+print(f"http://{host}:{port}/healthz")
+PYTHON
+}
+
 wait_for_cli_proxy() {
-  local health_url="http://127.0.0.1:8317/healthz"
+  local health_url="$PROXY_HEALTH_URL"
   local _
   for _ in {1..30}; do
     if curl --noproxy '*' --fail --silent --show-error \
@@ -133,6 +161,7 @@ require_command curl "check cli-proxy-api health" || exit 1
 
 run_cli_proxy_setup
 configure_cli_proxy
+PROXY_HEALTH_URL=$(resolve_cli_proxy_health_url) || exit 1
 
 if [[ "$PROXY_CONFIG" == *$'\n'* ]]; then
   echo "ERROR: proxy config path must not contain newlines." >&2

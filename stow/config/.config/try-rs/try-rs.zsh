@@ -5,8 +5,10 @@ try-rs() {
         esac
     done
 
-    local output
+    local output command_status
     output=$(command try-rs "$@")
+    command_status=$?
+    (( command_status == 0 )) || return "$command_status"
 
     if [ -n "$output" ]; then
         eval "$output"
@@ -14,11 +16,11 @@ try-rs() {
 }
 
 _try_rs_get_tries_path() {
-    if [[ -n "${TRY_PATH}" ]]; then
-        if [[ "${TRY_PATH}" == *","* ]]; then
-            echo "${TRY_PATH}" | tr ',' '\n'
+    if [[ -n "${TRY_PATH:-}" ]]; then
+        if [[ "${TRY_PATH:-}" == *","* ]]; then
+            echo "${TRY_PATH:-}" | tr ',' '\n'
         else
-            echo "${TRY_PATH}"
+            echo "${TRY_PATH:-}"
         fi
         return
     fi

@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import shlex
+import sys
 import tempfile
 from typing import Any, Iterator, Mapping
 
@@ -26,6 +27,8 @@ class ProxyToolError(RuntimeError):
 
 
 _EXPECTED_UNSET = object()
+BACKUP_RETENTION_COUNT = 3
+_BACKUP_TIMESTAMP_PATTERN = re.compile(r"^\d{8}T\d{6}\.\d{6}Z$")
 
 
 if yaml is not None:
@@ -148,6 +151,31 @@ def backup_file(path: Path) -> Path | None:
     return backup
 
 
+def prune_generated_backups(
+    path: Path, *, retain: int = BACKUP_RETENTION_COUNT
+) -> None:
+    """Retain only the newest generated regular-file backups for one target."""
+    prefix = f"{path.name}.bak."
+    backups: list[Path] = []
+    try:
+        entries = path.parent.iterdir()
+        for candidate in entries:
+            name = candidate.name
+            if not name.startswith(prefix):
+                continue
+            stamp = name[len(prefix):]
+            if not _BACKUP_TIMESTAMP_PATTERN.fullmatch(stamp):
+                continue
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            backups.append(candidate)
+        backups.sort(key=lambda candidate: candidate.name, reverse=True)
+        for stale in backups[max(retain, 0):]:
+            stale.unlink()
+    except OSError as exc:
+        raise ProxyToolError(f"Unable to prune backups for file: {path}") from exc
+
+
 def write_if_changed(
     path: Path,
     content: str,
@@ -174,6 +202,14 @@ def write_if_changed(
             mode=mode,
             expected_content=expected_content,
         )
+        if backup:
+            try:
+                prune_generated_backups(path)
+            except ProxyToolError:
+                print(
+                    "WARNING: unable to prune generated backups after successful update.",
+                    file=sys.stderr,
+                )
     elif path.exists():
         os.chmod(path, mode)
     else:

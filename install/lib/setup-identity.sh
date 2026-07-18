@@ -6,9 +6,9 @@
 #   2. --name / --email arguments
 #   3. Interactive prompt
 #
-# Then writes to:
+# Then writes through each tool's config interface:
 #   - git config --global user.name / user.email
-#   - ~/.jjconfig.toml [user] table
+#   - jj config set --user user.name / user.email
 
 set -euo pipefail
 
@@ -68,35 +68,26 @@ else
 fi
 
 # --- jj config ---
-_JJCONFIG="$HOME/.jjconfig.toml"
-
 if command -v jj &>/dev/null; then
-  _jj_name=""
-  _jj_email=""
-  if [[ -f "$_JJCONFIG" ]]; then
-    _jj_name=$(grep -E '^\s*name\s*=' "$_JJCONFIG" 2>/dev/null | head -1 | sed -E 's/.*=\s*"?([^"]*)"?.*/\1/' || true)
-    _jj_email=$(grep -E '^\s*email\s*=' "$_JJCONFIG" 2>/dev/null | head -1 | sed -E 's/.*=\s*"?([^"]*)"?.*/\1/' || true)
+  _jj_name=$(jj config list --user user.name -T 'value' 2>/dev/null || true)
+  _jj_email=$(jj config list --user user.email -T 'value' 2>/dev/null || true)
+
+  if [[ -z "$_jj_name" ]]; then
+    jj config set --user user.name "$_IDENTITY_NAME"
+    echo "Set jj user.name = $_IDENTITY_NAME"
+  else
+    echo "jj user.name already set: $_jj_name (skipping)"
   fi
 
-  if [[ -z "$_jj_name" || -z "$_jj_email" ]]; then
-    # Build [user] section
-    if [[ ! -f "$_JJCONFIG" ]] || ! grep -q '^\[user\]' "$_JJCONFIG"; then
-      printf '\n[user]\n' >> "$_JJCONFIG"
-    fi
-    if [[ -z "$_jj_name" ]]; then
-      printf 'name = "%s"\n' "$_IDENTITY_NAME" >> "$_JJCONFIG"
-      echo "Set jj user.name = $_IDENTITY_NAME"
-    fi
-    if [[ -z "$_jj_email" ]]; then
-      printf 'email = "%s"\n' "$_IDENTITY_EMAIL" >> "$_JJCONFIG"
-      echo "Set jj user.email = $_IDENTITY_EMAIL"
-    fi
+  if [[ -z "$_jj_email" ]]; then
+    jj config set --user user.email "$_IDENTITY_EMAIL"
+    echo "Set jj user.email = $_IDENTITY_EMAIL"
   else
-    echo "jj [user] already configured (name=$_jj_name, email=$_jj_email) (skipping)"
+    echo "jj user.email already set: $_jj_email (skipping)"
   fi
 else
-  echo "jj not installed yet; skipping jjconfig. Re-run after installing jj."
+  echo "jj not installed yet; skipping jj config. Re-run after installing jj."
 fi
 
 unset _IDENTITY_NAME _IDENTITY_EMAIL _existing_git_name _existing_git_email
-unset _existing_name _existing_email _JJCONFIG _jj_name _jj_email
+unset _existing_name _existing_email _jj_name _jj_email

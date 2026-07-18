@@ -102,7 +102,8 @@ claude_via_proxy() {
   fi
 
   local base_url
-  base_url=$(_cli_proxy_v1_url) || return
+  base_url="${CLI_PROXY_API_URL%/}"
+  [[ "$base_url" == */v1 ]] && base_url="${base_url%/v1}"
   (
     setopt localoptions noxtrace
     unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy

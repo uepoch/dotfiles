@@ -27,6 +27,7 @@ zsh_files=(
   stow/zsh/.zprofile
   stow/zsh/.zshrc
   stow/config/.config/team-zsh/*.zsh
+  stow/config/.config/try-rs/try-rs.zsh
   tests/check-zsh.zsh
 )
 
